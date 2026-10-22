@@ -36,7 +36,7 @@ export function ReportsPage() {
   const powertrainFilter = params.get('powertrain_type');
   const activeFilters = [
     ['uf', params.get('uf')], ['city', params.get('city')], ['manufacturer', params.get('manufacturer')],
-    ['model', params.get('model')], ['vehicle_type', typeFilter ? vehicleType(typeFilter) : ''],
+    ['model', params.get('model')], ['manufacture_year', params.get('manufacture_year')], ['vehicle_type', typeFilter ? vehicleType(typeFilter) : ''],
     ['powertrain_type', powertrainFilter ? electrification(powertrainFilter) : ''],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
   return <>
@@ -56,6 +56,7 @@ export function ReportsPage() {
           {facets.data?.municipalities.length ? <SelectFilter {...filters} name="city" label="Município / cidade" options={facets.data.municipalities.map(city => [city, city])} /> : <TextFilter {...filters} name="city" label="Município / cidade" placeholder={params.get('uf') ? 'Nome do município' : 'Escolha uma UF ou digite o nome'} />}
           <TextFilter {...filters} name="manufacturer" label="Marca" />
           <TextFilter {...filters} name="model" label="Modelo" />
+          <TextFilter {...filters} name="manufacture_year" label="Ano de fabricação" placeholder="Ex.: 2020" />
           <SelectFilter {...filters} name="vehicle_type" label="Tipo do veículo" options={(facets.data?.vehicle_types || []).map(value => [value, vehicleType(value)])} />
           <SelectFilter {...filters} name="powertrain_type" label="Eletrificação" options={(facets.data?.powertrains || []).map(value => [value, electrification(value)])} />
           {!!activeFilters.length && <div className="active-filter-list" aria-label="Filtros ativos">{activeFilters.map(([key, label]) => <button key={key} onClick={() => update(key, '')}>{label}<X size={12} /></button>)}</div>}
@@ -65,7 +66,7 @@ export function ReportsPage() {
     {result.error ? <ErrorState error={result.error} retry={result.reload} /> : result.loading ? <Loading /> : result.data && <>
       <div className="section-heading"><div><h2>{month(result.data.publication?.reference_period)}</h2><p>{number(result.data.total)} registros agregados{result.data.total_quantity != null ? ` · ${number(result.data.total_quantity)} veículos publicados no recorte` : ''}</p></div><Badge><Database size={13} />SENATRAN</Badge></div>
       {result.data.coverage && <Note>{result.data.coverage}</Note>}
-      <div className="table-container"><table><thead><tr><th>Marca e modelo</th><th>Município / UF</th><th>Tipo do veículo</th><th>Eletrificação</th><th className="numeric">Quantidade</th><th><span className="sr-only">Acesso ao modelo</span></th></tr></thead><tbody>{result.data.items.map((row, index) => <tr key={row.id || index}><td><strong>{row.manufacturer || 'Marca pendente'}</strong><small>{row.model}{row.trim ? ` · ${row.trim}` : ''}</small></td><td>{row.municipality || 'Não informado'}<small>{row.state || 'UF não informada'}</small></td><td>{vehicleType(row.vehicle_category)}</td><td>{row.powertrain_type ? electrification(row.powertrain_type) : 'Pendente'}</td><td className="numeric"><strong>{number(row.quantity)}</strong></td><td>{row.model_id && <Link className="text-link" to={`/veiculos/modelos/${row.model_id}?publication_id=${result.data?.publication?.id || ''}`} title="Ver cadastros nacionais deste modelo">Ver cadastros<ArrowUpRight size={15} /></Link>}</td></tr>)}</tbody></table></div>
+      <div className="table-container"><table><thead><tr><th>Marca e modelo</th><th>Ano</th><th>Município / UF</th><th>Tipo do veículo</th><th>Eletrificação</th><th className="numeric">Quantidade</th><th><span className="sr-only">Acesso ao modelo</span></th></tr></thead><tbody>{result.data.items.map((row, index) => <tr key={row.id || index}><td><strong>{row.manufacturer || 'Marca pendente'}</strong><small>{row.model}{row.trim ? ` · ${row.trim}` : ''}</small></td><td>{row.manufacture_year ?? 'Não informado'}</td><td>{row.municipality || 'Não informado'}<small>{row.state || 'UF não informada'}</small></td><td>{vehicleType(row.vehicle_category)}</td><td>{row.powertrain_type ? electrification(row.powertrain_type) : 'Pendente'}</td><td className="numeric"><strong>{number(row.quantity)}</strong></td><td>{row.model_id && <Link className="text-link" to={`/veiculos/modelos/${row.model_id}?publication_id=${result.data?.publication?.id || ''}`} title="Ver cadastros nacionais deste modelo">Ver cadastros<ArrowUpRight size={15} /></Link>}</td></tr>)}</tbody></table></div>
       {!result.data.items.length && <Empty title="Nenhum registro nesse recorte">Mude a competência, o município ou os filtros de modelo.</Empty>}
       <Pager total={result.data.total} offset={offset} setOffset={setOffset} />
     </>}

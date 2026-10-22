@@ -44,7 +44,7 @@ def _simulated_seed(vehicle, model, locations=()):
     powertrain = model.get('powertrain_type') or 'UNKNOWN'
     if powertrain.startswith('MHEV'):
         capacity = round(0.4 + family * 0.8, 2)
-    elif powertrain.startswith('HEV'):
+    elif powertrain.startswith('HEV') or powertrain == 'HYBRID':
         capacity = round(1.0 + family * 1.8, 2)
     elif powertrain == 'PHEV':
         capacity = round(12 + family * 28, 1)

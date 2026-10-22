@@ -268,7 +268,7 @@ def model_query(pub):
         .outerjoin(identified, identified.c.model_id == o.model.c.id)
         .outerjoin(batteries, batteries.c.model_id == o.model.c.id)
         .outerjoin(quantities, quantities.c.model_id == o.model.c.id)).where(
-        or_(rc > 0, quantity > 0), o.model.c.powertrain_type.in_(['BEV','PHEV','HEV','HEV_FLEX','MHEV','MHEV_12V','MHEV_48V','FCEV']))
+        or_(rc > 0, quantity > 0), o.model.c.powertrain_type.in_(['BEV','PHEV','HEV','HEV_FLEX','HYBRID','MHEV','MHEV_12V','MHEV_48V','FCEV']))
     return query,rc,ic,bc
 
 
@@ -407,25 +407,25 @@ def search(q:str=Query(min_length=2,max_length=200)):
         return {'models':ms,'vehicles':vs,'batteries':bs}
 
 
-def observations_query(pub,uf=None,city=None,manufacturer=None,model=None,powertrain_type=None,vehicle_category=None,vehicle_type=None):
+def observations_query(pub,uf=None,city=None,manufacturer=None,model=None,powertrain_type=None,vehicle_category=None,vehicle_type=None,manufacture_year=None):
     query=select(s.aggregate).where(s.aggregate.c.source_snapshot_id==(pub['source_snapshot_id'] if pub else ''))
     for col,v in [(s.aggregate.c.state,uf),(s.aggregate.c.municipality,city),(s.aggregate.c.manufacturer,manufacturer),(s.aggregate.c.model,model),
                   (s.aggregate.c.powertrain_type,powertrain_type)]:
         if v:query=query.where(col==v)
+    if manufacture_year is not None:query=query.where(s.aggregate.c.manufacture_year==manufacture_year)
     return filter_vehicle_type(query,s.aggregate.c.vehicle_category,vehicle_type or vehicle_category)
 
 
-def grouped_observations_query(pub,uf=None,city=None,manufacturer=None,model=None,powertrain_type=None,vehicle_category=None,vehicle_type=None):
-    """Combine source rows that differ only by a dimension hidden in the report.
+def grouped_observations_query(pub,uf=None,city=None,manufacturer=None,model=None,powertrain_type=None,vehicle_category=None,vehicle_type=None,manufacture_year=None):
+    """Combine source rows with the same model, year and geography.
 
     SENATRAN publishes one line per manufacture year and can publish more than
-    one technical line for the same year. The public report shows model and
-    geography, so returning those source lines separately looks like duplicate
-    vehicles. Originals remain immutable; only this read model is grouped.
+    one technical line for the same year. Keep years visible in the report,
+    while combining duplicate technical lines for the same public dimensions.
     """
-    raw=observations_query(pub,uf,city,manufacturer,model,powertrain_type,vehicle_category,vehicle_type).subquery()
+    raw=observations_query(pub,uf,city,manufacturer,model,powertrain_type,vehicle_category,vehicle_type,manufacture_year).subquery()
     public_type=vehicle_type_expression(raw.c.vehicle_category).label('vehicle_category')
-    dimensions=[raw.c.state,raw.c.municipality,raw.c.manufacturer,raw.c.model,raw.c.trim,
+    dimensions=[raw.c.state,raw.c.municipality,raw.c.manufacturer,raw.c.model,raw.c.trim,raw.c.manufacture_year,
                 raw.c.powertrain_type,public_type]
     return select(func.min(raw.c.id).label('id'),*dimensions,
                   func.min(raw.c.reference_period).label('reference_period'),
@@ -434,9 +434,10 @@ def grouped_observations_query(pub,uf=None,city=None,manufacturer=None,model=Non
 
 @router.get('/observations')
 def observations(reference:str|None=None,publication_id:str|None=None,uf:str|None=None,city:str|None=None,manufacturer:str|None=None,model:str|None=None,
-                 powertrain_type:str|None=None,vehicle_type:str|None=None,vehicle_category:str|None=None,limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0)):
+                 powertrain_type:str|None=None,vehicle_type:str|None=None,vehicle_category:str|None=None,
+                 manufacture_year:int|None=Query(None,ge=0,le=2100),limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0)):
     with db.engine.connect() as c:
-        pub=publication(c,publication_id,reference);query=grouped_observations_query(pub,uf,city,manufacturer,model,powertrain_type,vehicle_category,vehicle_type);sq=query.subquery()
+        pub=publication(c,publication_id,reference);query=grouped_observations_query(pub,uf,city,manufacturer,model,powertrain_type,vehicle_category,vehicle_type,manufacture_year);sq=query.subquery()
         total,quantity=c.execute(select(func.count(),func.coalesce(func.sum(sq.c.quantity),0)).select_from(sq)).one()
         rows=[dict(r) for r in c.execute(query.order_by(query.selected_columns.quantity.desc(),query.selected_columns.id).limit(limit).offset(offset)).mappings()]
         groups=c.execute(select(s.fleet_model_group,o.group_model.c.model_id).join(o.group_model,o.group_model.c.group_id==s.fleet_model_group.c.id).where(s.fleet_model_group.c.publication_id==(pub['id'] if pub else ''))).mappings().all()

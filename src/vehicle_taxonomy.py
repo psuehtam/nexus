@@ -1,5 +1,5 @@
 """Canonical vehicle taxonomy shared by classification and publication."""
-ELECTRIFIED_POWERTRAINS=frozenset({'BEV','PHEV','HEV','HEV_FLEX','MHEV','MHEV_12V','MHEV_48V','FCEV'})
+ELECTRIFIED_POWERTRAINS=frozenset({'BEV','PHEV','HEV','HEV_FLEX','HYBRID','MHEV','MHEV_12V','MHEV_48V','FCEV'})
 HEAVY_CATEGORIES=frozenset({'bus','microbus','truck','tractor_truck','van','utility','chassis_platform','heavy'})
 CANONICAL_CATEGORIES=frozenset({'car','motorcycle','bus','microbus','truck','tractor_truck','van','utility','chassis_platform','other','unknown'})
 

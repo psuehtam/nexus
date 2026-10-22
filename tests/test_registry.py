@@ -83,7 +83,7 @@ def test_report_links_to_national_registry_and_source_totals(client,database):
     assert client.get('/api/v3/observations?uf=PR').json()['total_quantity']==0
 
 
-def test_report_groups_hidden_manufacture_year_rows(client,database):
+def test_report_separates_manufacture_years_and_keeps_totals(client,database):
     source(database,'grouped','2026-01',60)
     with database.begin() as c:
         c.execute(s.aggregate.update().where(s.aggregate.c.id=='agg-grouped').values(
@@ -93,11 +93,11 @@ def test_report_groups_hidden_manufacture_year_rows(client,database):
             state='PR',municipality='CURITIBA',manufacture_year=2025,source_record_reference='2'))
     fleet.materialize('grouped',17,True)
     report=client.get('/api/v3/observations?uf=PR').json()
-    assert report['total']==1
-    assert len(report['items'])==1
-    assert report['items'][0]['quantity']==90
-    assert report['items'][0]['vehicle_category']=='unknown'
+    assert report['total']==2
+    assert {(r['manufacture_year'],r['quantity']) for r in report['items']}=={(2026,60),(2025,30)}
+    assert all(r['vehicle_category']=='unknown' for r in report['items'])
     assert report['total_quantity']==90
+    assert client.get('/api/v3/observations?uf=PR&manufacture_year=2025').json()['total_quantity']==30
     filters=client.get('/api/v3/observation-filters').json()
     assert filters['states']==['PR']
     assert filters['state_quantities']=={'PR':90}

@@ -21,6 +21,10 @@ def start(check_catalog=True):
     _enabled = True
     if check_catalog:
         request_refresh(startup=True)
+    try:
+        pipeline.enqueue_classifier_refresh()
+    except Exception:
+        log.exception('Falha ao agendar atualização da classificação automática')
     pipeline.record_worker_health('idle')
     notify()  # Also recover unfinished work after an interruption.
 

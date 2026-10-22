@@ -21,7 +21,7 @@ export const vehicleTypeOptions: [string, string][] = [
 ].map(value => [value, vehicleType(value)]);
 // Compatibilidade temporária para componentes antigos fora do fluxo principal.
 export const category = vehicleType;
-export const electrification = (value: string) => ({ MHEV: 'Híbrido leve', BEV: 'Elétrico', HEV: 'Híbrido', PHEV: 'Híbrido plug-in', HEV_FLEX: 'Híbrido flex', MHEV_12V: 'Híbrido leve 12 V', MHEV_48V: 'Híbrido leve 48 V', FCEV: 'Célula de combustível' }[value] || value);
+export const electrification = (value: string) => ({ MHEV: 'Híbrido leve', BEV: 'Elétrico', HEV: 'Híbrido', HYBRID: 'Híbrido · tipo não informado', PHEV: 'Híbrido plug-in', HEV_FLEX: 'Híbrido flex', MHEV_12V: 'Híbrido leve 12 V', MHEV_48V: 'Híbrido leve 48 V', FCEV: 'Célula de combustível' }[value] || value);
 export function Shell() {
   const { user, logout } = useAuth(); const location = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);

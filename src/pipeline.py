@@ -32,7 +32,7 @@ import httpx
 from sqlalchemy import select, insert, update, func, and_, or_, literal
 from sqlalchemy.exc import IntegrityError, OperationalError
 from src import db, pipeline_schema as p, intelligence_schema as s, operational_schema as registry_schema
-from src import catalog
+from src import catalog, auto_classification
 from src.vehicle_taxonomy import CANONICAL_CATEGORIES,ELECTRIFIED_POWERTRAINS,is_heavy
 from src.matching import normalize
 
@@ -496,8 +496,8 @@ def parse_artifact(artifact_id, lease):
             records.append(dict(**_normalize_row(row.to_dict(),header,artifact['reference']),member=member,line_number=scanned+int(frame.index.get_loc(position))+2))
         rest=pd.DataFrame({'raw_name':frame.loc[~chosen,name_col].map(names),'quantity':qty.loc[~chosen].astype('int64')})
         grouped=rest.groupby('raw_name',sort=True)['quantity'].agg(['sum','count'])
-        # Pending names help reviewers find missed electrified models, but no
-        # quantity or combustion-only model is retained in the database.
+        # Keep only names for coverage diagnostics. Neither quantities nor
+        # individual rows of unsupported names are retained.
         summaries=[dict(raw_name=str(name),quantity=0,row_count=0,status='pending',electrified_hint=hint(str(name)))
                    for name,row in grouped.iterrows() if decision(str(name))=='pending']
         scanned+=len(frame)
@@ -590,7 +590,8 @@ def rules_snapshot(c):
         p.rule.c.raw_name == latest.c.raw_name, p.rule.c.version == latest.c.version)).order_by(p.rule.c.raw_name)).mappings()]
     # Built-in rules remain frozen in the classification record across releases.
     # Category is intentionally unknown without a category-specific assertion.
-    return {'prefixes': list(catalog.PREFIXES), 'overrides': overrides, 'category_policy': 'explicit-or-unknown-1'}
+    return {'prefixes': list(catalog.PREFIXES), 'overrides': overrides, 'category_policy': 'explicit-or-unknown-1',
+            'automatic_classifier': auto_classification.VERSION}
 
 
 def approve_rule(raw_name, decision, evidence, actor, manufacturer=None, model=None,
@@ -648,6 +649,16 @@ def _classify(name, frozen):
         if override['raw_name'] == name:
             return {key: override.get(key) for key in ('manufacturer', 'model', 'powertrain', 'category','vehicle_subtype','segment','body_type', 'evidence')} | {
                 'status': 'recognized' if override['decision'] == 'include' else 'excluded'}
+    explicit = (auto_classification.classify(name)
+                if frozen.get('automatic_classifier') == auto_classification.VERSION else None)
+    # A motorization written in the source name takes precedence over a broad
+    # family prefix (for example, a BEV version of a normally PHEV family).
+    if explicit:
+        for prefix, brand, model, propulsion in frozen['prefixes']:
+            if (name == prefix or name.startswith(prefix + ' ')) and propulsion == explicit['powertrain']:
+                explicit['manufacturer'], explicit['model'] = brand, model
+                break
+        return explicit
     for prefix, brand, model, propulsion in frozen['prefixes']:
         if name == prefix or name.startswith(prefix + ' '):
             known_bus=prefix in {'M BENZ EO500U','MERCEDES BENZ EO500U'}
@@ -721,10 +732,11 @@ def _aggregate_classification(classification, content, artifact, lease):
             retrieved_at=timestamp(), method='public_monthly_aggregate', raw_file_hash=artifact['raw_sha256'],
             raw_storage_path=artifact['path'], source_version=PARSER_VERSION, transformation_version=TRANSFORMATION_VERSION,
             ingestion_status='staging', source_url=artifact['url'], metric='fleet_stock', access_level='public',
-            scope='Famílias eletrificadas reconhecidas; nomes ambíguos aguardam revisão; cadastros sem identidade física',
+            scope='Veículos eletrificados por catálogo ou motorização explícita no nome SENATRAN; nomes duvidosos excluídos; cadastros sem identidade física',
             metadata={'pipeline_job_id': lease['job_id'], 'pipeline_generation': job['generation'],
                       'semantic_content_id': content['id'], 'semantic_sha256': content['semantic_sha256'],
-                      'rules_version': classification['rules_version'], 'normalization_version': NORMALIZATION_VERSION}))
+                      'rules_version': classification['rules_version'], 'normalization_version': NORMALIZATION_VERSION,
+                      'automatic_classifier': auto_classification.VERSION}))
     # Joining classified names avoids a Python lookup growing with every source
     # model. Every original row contributes its quantity, including multiplicity.
     o, n = p.observation, p.classified_name
@@ -763,7 +775,7 @@ def _aggregate_classification(classification, content, artifact, lease):
         pending_names=c.execute(select(func.count(func.distinct(p.filtered_summary.c.raw_name))).where(p.filtered_summary.c.artifact_id==artifact['id'],p.filtered_summary.c.status=='pending')).scalar_one()
         metadata = c.execute(select(s.source_snapshot.c.metadata).where(s.source_snapshot.c.id == source_id)).scalar_one() or {}
         metadata.update({'recognized_quantity': recognized, 'pending_quantity': int(pending), 'pending_names': pending_names,
-                         'raw_rows': content['rows'], 'coverage': 'reviewed_partial'})
+                         'raw_rows': content['rows'], 'coverage': 'automatic_explicit_partial'})
         c.execute(update(s.source_snapshot).where(s.source_snapshot.c.id == source_id).values(
             ingestion_status='success', record_count=count, metadata=metadata))
         c.execute(update(p.classification).where(p.classification.c.id == cid).values(status='complete',
@@ -787,7 +799,11 @@ def _aggregate_block(cid, source_id, rows, index, lease):
 def pending_reviews(classification_id=None, limit=50, after='', offset=0, paged=False):
     with db.engine.connect() as c:
         if not classification_id:
-            classification_id=c.execute(select(p.classification.c.id).join(p.content).where(p.classification.c.status=='complete').order_by(p.content.c.reference.desc(),p.classification.c.id).limit(1)).scalar_one_or_none()
+            classification_id=c.execute(select(p.classification.c.id)
+                .join(s.fleet_publication,p.classification.c.source_snapshot_id==s.fleet_publication.c.source_snapshot_id)
+                .join(s.fleet_active,s.fleet_active.c.publication_id==s.fleet_publication.c.id)
+                .where(s.fleet_active.c.id=='active',p.classification.c.status=='complete')
+                .limit(1)).scalar_one_or_none()
         if not classification_id:return {'items':[],'total':0,'offset':offset,'limit':limit} if paged else []
         artifact_id=c.execute(select(p.content.c.artifact_id).join(p.classification).where(p.classification.c.id==classification_id)).scalar_one()
         t=p.filtered_summary
@@ -796,9 +812,46 @@ def pending_reviews(classification_id=None, limit=50, after='', offset=0, paged=
         total=c.execute(select(func.count()).select_from(query.subquery())).scalar()
         rows=c.execute(query.order_by(func.max(t.c.electrified_hint).desc(),t.c.raw_name).limit(min(200,max(1,limit))).offset(offset)).mappings()
         items=[dict(row,classification_id=classification_id,
-            reason='Nome sugere eletrificação, mas falta confirmar versão, ano e motorização.',
-            source='SENATRAN — marca/modelo; comprovação técnica pendente') for row in rows]
+            reason='Nome sem indicação suficiente para classificação automática; excluído dos totais.',
+            source='SENATRAN — marca/modelo; nenhuma ação manual necessária') for row in rows]
         return {'items':items,'total':total,'offset':offset,'limit':limit} if paged else items
+
+
+def enqueue_classifier_refresh():
+    """Reimport published months once when explicit-name rules change.
+
+    The old publication remains active until its replacement is fully built.
+    Source downloads can be disabled by the installation configuration.
+    """
+    if os.getenv('ALLOW_SOURCE_DOWNLOAD', 'false').lower() != 'true':
+        return []
+    with db.engine.connect() as c:
+        sources=list(c.execute(select(s.fleet_publication.c.reference_period,
+            s.fleet_publication.c.finished_at,s.source_snapshot.c.id,
+            s.source_snapshot.c.source_url,s.source_snapshot.c.metadata)
+            .join(s.source_snapshot,s.fleet_publication.c.source_snapshot_id==s.source_snapshot.c.id)
+            .where(s.fleet_publication.c.status=='complete',s.source_snapshot.c.provider==PROVIDER,
+                   s.source_snapshot.c.metric=='fleet_stock')
+            .order_by(s.fleet_publication.c.reference_period,s.fleet_publication.c.finished_at.desc())).mappings())
+        busy={row['reference'] for row in c.execute(select(p.job.c.payload)
+            .where(p.job.c.kind.in_(['import_remote','reclassify']),
+                   p.job.c.status.in_(['queued','running']))).scalars()
+            if isinstance(row,dict) and (row.get('reference') or '')}
+    latest={}
+    for row in sources:
+        latest.setdefault(row['reference_period'],row)
+    queued=[]
+    for reference,row in latest.items():
+        if reference in busy or not row['source_url']:
+            continue
+        if (row['metadata'] or {}).get('automatic_classifier')==auto_classification.VERSION:
+            continue
+        job=enqueue('import_remote',{'reference':reference,'url':row['source_url'],
+            'resource_id':'automatic-classification','automatic_classifier':auto_classification.VERSION},
+            f'automatic-classification:{auto_classification.VERSION}:{reference}:{row["id"]}')
+        if job['status']=='queued':
+            queued.append(job['id'])
+    return queued
 
 
 def evaluate_alerts(c, classification_id, source_id):
