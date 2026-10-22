@@ -53,6 +53,19 @@ def test_semantic_hash_ignores_order_zip_metadata_but_preserves_multiplicity(que
     assert content4 != content1
 
 
+def test_same_rows_get_new_content_when_classifier_rules_change(queue, tmp_path, monkeypatch):
+    from src import auto_classification
+    path=source_file(tmp_path, 'classifier.csv')
+    _, first_lease, _, first=parse(queue,path)
+    q.finish(first_lease, {'parsed':True})
+    monkeypatch.setattr(auto_classification,'VERSION','test-classifier-next')
+    _, second_lease, artifact, second=parse(queue,path,key='classifier-next')
+    assert second != first
+    with queue.connect() as c:
+        assert c.execute(select(p.content.c.artifact_id).where(p.content.c.id==second)).scalar_one()==artifact['id']
+    q.finish(second_lease, {'parsed':True})
+
+
 def test_idempotency_rejects_reused_key_different_payload(queue):
     first = q.enqueue('discover', {'start': '2026-01'}, 'one')
     assert q.enqueue('discover', {'start': '2026-01'}, 'one')['id'] == first['id']
@@ -134,7 +147,7 @@ def test_parse_retries_after_committed_block_without_duplicate(queue, tmp_path, 
         assert c.execute(select(func.count()).select_from(p.block)).scalar_one() == 1
 
 
-def test_classification_retains_unknowns_and_does_not_invent_category(queue, tmp_path):
+def test_classification_uses_known_model_family_category(queue, tmp_path):
     path = source_file(tmp_path, 'classification.csv')
     _, lease, _, content = parse(queue, path)
     source_id, equivalent = q.classify_content(content, lease)
@@ -145,7 +158,7 @@ def test_classification_retains_unknowns_and_does_not_invent_category(queue, tmp
         assert source['metadata']['recognized_quantity'] == 90
         assert source['metadata']['pending_quantity'] == 0
         assert len(rows) == 1
-        assert rows[0]['vehicle_category'] == 'unknown'
+        assert rows[0]['vehicle_category'] == 'car'
     assert q.pending_reviews() == []  # No electrification hint, so not surfaced.
 
 

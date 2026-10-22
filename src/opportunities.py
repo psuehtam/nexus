@@ -3,6 +3,7 @@ import hashlib
 import heapq
 import gzip
 import json
+import math
 from threading import Lock, Thread
 from bisect import bisect_left
 from collections import Counter
@@ -26,20 +27,32 @@ def _family_fraction(model_key):
 
 def _unit_fractions(vid):
     digest = hashlib.sha256(str(vid).encode()).hexdigest()
-    return tuple(int(digest[start:start + 12], 16) / 0xFFFFFFFFFFFF for start in (0, 12, 24))
+    return tuple(int(digest[start:start + 12], 16) / 0xFFFFFFFFFFFF for start in (0, 12, 24, 36, 48))
+
+
+# Demonstration assumptions, not observed prevalence in the SENATRAN fleet.
+# Keep the exceptional tail separate from gradual degradation.
+SIMULATION_VERSION = 'battery-health-demo-4'
+DEMO_HEALTH_PARAMETERS = {
+    'BEV': (0.015, 0.027, 0.0015),
+    'PHEV': (0.018, 0.034, 0.0018),
+    'HEV': (0.013, 0.032, 0.0012),
+    'MHEV': (0.012, 0.031, 0.0012),
+    'HEAVY': (0.017, 0.036, 0.0020),
+}
 
 
 def _simulated_seed(vehicle, model, locations=()):
     """Cheap shared calculation; the 71 passport fields are made only on detail."""
     vid = vehicle['id']
-    year_fraction, unit, location_fraction = _unit_fractions(vid)
+    year_fraction, unit, location_fraction, event_fraction, severity_fraction = _unit_fractions(vid)
     year_simulated = not bool(vehicle.get('manufacture_year'))
     simulated_year = vehicle.get('manufacture_year') or (2015 + int(year_fraction * 11))
     vehicle = {**vehicle, 'manufacture_year': simulated_year}
     model_key = '|'.join(str(model.get(k) or vehicle.get(k) or '') for k in
                          ('manufacturer', 'model', 'trim', 'manufacture_year', 'powertrain_type', 'vehicle_category'))
     family = _family_fraction(model_key)
-    age = max(0, date.today().year - (vehicle.get('manufacture_year') or 2020))
+    vehicle_age = max(0, date.today().year - (vehicle.get('manufacture_year') or 2020))
     category = model.get('vehicle_category') or 'unknown'
     powertrain = model.get('powertrain_type') or 'UNKNOWN'
     if powertrain.startswith('MHEV'):
@@ -51,10 +64,24 @@ def _simulated_seed(vehicle, model, locations=()):
     else:
         capacity = round((90 if category in ('bus', 'truck') else 30) + family * (240 if category in ('bus', 'truck') else 75), 1)
     chemistry = 'LFP' if family < 0.52 else 'NMC'
-    # Scenario inspired by Geotab cohort findings; never a measured or fitted SOH.
-    annual_loss = 1.4 + family * 1.6
-    soh = round(max(55, min(100, 100 - age * annual_loss - unit * 12)), 1)
-    cycles = int(age * (75 + 210 * unit))
+    health_group = ('HEAVY' if category in ('bus', 'microbus', 'truck', 'tractor_truck')
+                    else 'MHEV' if powertrain.startswith('MHEV')
+                    else 'HEV' if powertrain.startswith('HEV') or powertrain == 'HYBRID'
+                    else 'PHEV' if powertrain == 'PHEV' else 'BEV')
+    low_rate, high_rate, exceptional_share = DEMO_HEALTH_PARAMETERS[health_group]
+    # A small simulated replacement chance means an old car can carry a younger pack.
+    replacement = vehicle_age >= 3 and event_fraction < min(0.03, vehicle_age * 0.0015)
+    age = max(0, min(vehicle_age, 1 + int(severity_fraction * vehicle_age))) if replacement else vehicle_age
+    battery_year = date.today().year - age
+    rate = low_rate + family * (high_rate - low_rate)
+    usage = 0.7 + 0.7 * unit
+    cycles = int(age * (75 + 210 * unit) * (1.6 if health_group == 'HEAVY' else 1))
+    gradual_damage = rate * age * usage
+    # An exceptional cell/pack event is a rare, explicit demonstration scenario.
+    exceptional = age > 0 and not replacement and event_fraction >= 0.03 and event_fraction < 0.03 + exceptional_share
+    shock = (0.55 + 0.45 * severity_fraction) if exceptional else 0.0
+    soh = round(100 * math.exp(-(gradual_damage + shock)), 1)
+    annual_loss = round(100 * (1 - math.exp(-rate * usage)), 2)
     city = vehicle.get('municipality')
     state = vehicle.get('state')
     simulated_location = False
@@ -68,8 +95,12 @@ def _simulated_seed(vehicle, model, locations=()):
             state, city = locations[index][:2]
         simulated_location = True
     return {'vid': vid, 'vehicle': vehicle, 'model_key': model_key, 'family': family,
-            'unit': unit, 'age': age, 'capacity': capacity, 'chemistry': chemistry,
-            'annual_loss': annual_loss, 'soh': soh, 'cycles': cycles, 'state': state,
+            'unit': unit, 'age': age, 'battery_year': battery_year,
+            'battery_origin': 'replacement' if replacement else 'original',
+            'health_scenario': 'exceptional' if exceptional else 'replacement' if replacement else 'gradual',
+            'capacity': capacity, 'chemistry': chemistry,
+            'annual_loss': annual_loss, 'degradation_rate': rate * usage,
+            'soh': soh, 'cycles': cycles, 'state': state,
             'city': city, 'simulated_location': simulated_location,
             'year_simulated': year_simulated, 'powertrain': powertrain}
 
@@ -84,9 +115,13 @@ def simulated_profile(vehicle, model, locations=()):
     state, city, simulated_location = seed['state'], seed['city'], seed['simulated_location']
     year_simulated = seed['year_simulated']
     simulated_year = vehicle['manufacture_year']
+    battery_year = seed['battery_year']
+    power_health = round(100 * (max(soh, 0.1) / 100) ** 0.75, 1)
     values = {}
-    dynamic = {'61': str(soh), '62': str(soh), '67': 'Em uso no veículo', '68': str(cycles),
+    dynamic = {'62': str(soh), '67': 'Em uso no veículo', '68': str(cycles),
                '70': str(round(20 + 18 * unit, 1)), '71': str(round(20 + 60 * unit, 1))}
+    if powertrain in ('BEV', 'PHEV'):
+        dynamic['61'] = str(round(soh * (0.97 + family * 0.03), 1))
     voltage = round(300 + family * 450)
     power = round(capacity * (1.8 + unit), 1)
     resistance = round(30 + 35 * unit, 1)
@@ -94,7 +129,7 @@ def simulated_profile(vehicle, model, locations=()):
     known = {'1': 'SIM-' + vid[:18], '2': 'NEXUS — simulação', '3': model.get('manufacturer') or 'Fabricante simulado',
              '4': 'Endereço simulado — Brasil', '5': 'Contato digital simulado', '6': 'EV' if powertrain=='BEV' else 'Bateria de veículo híbrido',
              '7': 'PACK-' + hashlib.sha256(vid.encode()).hexdigest()[:12].upper(), '8': 'Planta simulada BR-01',
-             '9': str(vehicle.get('manufacture_year') or 2020) + '-06', '10': str(round(capacity * 6.5, 1)) + ' kg',
+             '9': str(battery_year) + '-06', '10': str(round(capacity * 6.5, 1)) + ' kg',
              '11': str(capacity) + ' kWh', '12': chemistry, '13': 'Eletrólito inflamável — cenário',
              '14': 'Agente apropriado conforme protocolo simulado de emergência',
              '15': 'Lítio, grafite' + (', níquel, cobalto' if chemistry=='NMC' else ', ferro, fosfato'),
@@ -115,13 +150,13 @@ def simulated_profile(vehicle, model, locations=()):
              '49': 'Desenergizar e isolar o pack antes da intervenção — cenário',
              '50': 'Laudo simulado; não é certificado de conformidade',
              '51': str(round(capacity*soh/100,2))+' kWh', '52': str(round(100-soh,1))+'%',
-             '53': str(round(power*soh*10))+' W', '54': str(round(100-soh,1))+'%',
+             '53': str(round(power*power_health*10))+' W', '54': str(round(100-power_health,1))+'%',
              '55': str(round(resistance*(1+(100-soh)/100),1))+' mΩ',
              '56': str(round(100-soh,1))+'%', '57': str(round(efficiency-(100-soh)*0.08,1))+'%',
              '58': str(round((100-soh)*0.08,1))+' ponto percentual',
              '59': str(max(0,round(1200+family*2000)-cycles))+' ciclos restantes — cenário',
-             '60': str(round(max(0,(soh-80)/annual_loss),1))+' anos até 80% — cenário',
-             '63': str(round(soh-1,1))+'%', '64': str(round(efficiency-(100-soh)*0.08,1))+'%',
+             '60': str(round(max(0, math.log(max(soh, 0.1)/80)/max(seed['degradation_rate'],0.001)),1))+' anos até 80% — cenário',
+             '63': str(power_health)+'%', '64': str(round((efficiency-(100-soh)*0.08)/efficiency*100,1))+'%',
              '65': 'Autodescarga simulada de '+str(round(1+unit,1))+'% ao mês',
              '66': str(round(resistance*(1+(100-soh)/100),1))+' mΩ',
              '69': 'Nenhum evento adverso simulado',
@@ -132,19 +167,24 @@ def simulated_profile(vehicle, model, locations=()):
         fid = field['id']
         if fid in known:
             values[fid] = {'value': known[fid], 'status': 'confirmed', 'source': 'SIMULAÇÃO — cenário NEXUS', 'reason': ''}
-        elif fid in {'40', '41', '42'}:
+        elif fid in {'40', '41', '42', '61'}:
             values[fid] = {'value': None, 'status': 'not_applicable', 'source': 'SIMULAÇÃO — cenário NEXUS',
-                           'reason': 'Documento regulatório não usado nesta demonstração brasileira.'}
+                           'reason': ('SOCE não aplicável a esta categoria de híbrido nesta demonstração.' if fid == '61'
+                                      else 'Documento regulatório não usado nesta demonstração brasileira.')}
         else:
             values[fid] = {'value': 'Parâmetro simulado: ' + field['label'].lower(), 'status': 'confirmed',
                            'source': 'SIMULAÇÃO — cenário NEXUS', 'reason': ''}
     return {'id': vid, 'vehicle_id': vid, 'battery_id': 'sim-battery-' + vid,
             'manufacture_year': simulated_year, 'year_simulated': year_simulated,
+            'battery_manufacture_year': battery_year, 'battery_origin': seed['battery_origin'],
+            'health_scenario': seed['health_scenario'], 'simulation_version': SIMULATION_VERSION,
             'capacity_kwh': capacity, 'chemistry': chemistry, 'soh_percent': soh, 'cycle_count': cycles,
             'annual_degradation_pct': round(annual_loss, 2), 'state': state, 'municipality': city,
             'location_simulated': simulated_location, 'passport': {'fields': FIELDS, 'values': values,
-            'counts': {'confirmed': len(FIELDS)-3, 'not_applicable': 3, 'pending': 0, 'draft': 0, 'total': len(FIELDS)}},
-            'source': 'SIMULAÇÃO — referência de tendências Geotab; perfil sintético, sem medição real'}
+            'counts': {'confirmed': sum(v['status'] == 'confirmed' for v in values.values()),
+                       'not_applicable': sum(v['status'] == 'not_applicable' for v in values.values()),
+                       'pending': 0, 'draft': 0, 'total': len(FIELDS)}},
+            'source': 'SIMULAÇÃO — parâmetros demonstrativos por categoria; não é medição nem prevalência da SENATRAN'}
 
 
 def status(soh, threshold, previous=None, latest_at=None):
@@ -214,7 +254,7 @@ def _store_snapshot(path, rows):
             place_ids[place] = len(places); places.append(place)
         packed.append((row['id'], row['public_code'], model_ids[model], place_ids[place],
                        row['manufacture_year'], row['year_simulated'], row['soh_percent'],
-                       row['capacity_kwh'], row['chemistry']))
+                       row['capacity_kwh'], row['chemistry'], row['health_scenario']))
     temp_path = path.with_suffix('.part')
     try:
         with gzip.open(temp_path, 'wt', encoding='utf-8', compresslevel=1) as cached:
@@ -232,7 +272,7 @@ def _load_snapshot(path):
         packed = json.load(cached)
     today = date.today().isoformat()
     rows = []
-    for vid, code, model_index, place_index, year, year_simulated, soh, capacity, chemistry in packed['rows']:
+    for vid, code, model_index, place_index, year, year_simulated, soh, capacity, chemistry, health_scenario in packed['rows']:
         manufacturer, model, category, powertrain = packed['models'][model_index]
         state, city, location_simulated = packed['places'][place_index]
         rows.append({'id': vid, 'vehicle_id': vid, 'battery_id': 'sim-battery-' + vid,
@@ -242,6 +282,7 @@ def _load_snapshot(path):
                      'municipality': city, 'location_simulated': location_simulated,
                      'manufacture_year': year, 'year_simulated': year_simulated,
                      'soh_percent': soh, 'capacity_kwh': capacity, 'chemistry': chemistry,
+                     'health_scenario': health_scenario,
                      'observed_at': today})
     return rows
 
@@ -272,7 +313,7 @@ def _simulated_snapshot(c, reference):
             cache_dir = db.ROOT / 'data' / 'cache'
             cache_dir.mkdir(parents=True, exist_ok=True)
             filename = hashlib.sha256(repr((reference, tuple(signature), publication_version,
-                                            date.today().isoformat(), 'simulation-v3')).encode()).hexdigest()[:24]
+                                            date.today().isoformat(), SIMULATION_VERSION)).encode()).hexdigest()[:24]
             cache_path = cache_dir / ('opportunities-' + filename + '.json.gz')
             if cache_path.is_file():
                 try:
@@ -291,7 +332,8 @@ def _simulated_snapshot(c, reference):
             item.update(vehicle_id=item['id'], battery_id='sim-battery-' + item['id'],
                         manufacture_year=seed['vehicle']['manufacture_year'], year_simulated=seed['year_simulated'],
                         state=seed['state'], municipality=seed['city'], location_simulated=seed['simulated_location'],
-                        soh_percent=seed['soh'], capacity_kwh=seed['capacity'], chemistry=seed['chemistry'])
+                        soh_percent=seed['soh'], capacity_kwh=seed['capacity'], chemistry=seed['chemistry'],
+                        health_scenario=seed['health_scenario'])
             item['observed_at'] = date.today().isoformat()
             rows.append(item)
         _simulated_cache.clear()

@@ -1,7 +1,7 @@
 import json
 from sqlalchemy import select, func
 from src import intelligence_schema as s, operational_schema as o
-from src.opportunities import simulated_profile, status
+from src.opportunities import simulated_profile, status, _simulated_seed
 from test_registry import generate, first, account
 
 
@@ -17,14 +17,40 @@ def test_simulation_is_complete_stable_and_does_not_write(client, database):
     assert a == b
     assert len(a['passport']['values']) == 71
     assert a['passport']['counts']['pending'] == 0
+    fields = a['passport']['values']
+    assert float(fields['51']['value'].split()[0]) == round(a['capacity_kwh'] * a['soh_percent'] / 100, 2)
+    assert float(fields['52']['value'].rstrip('%')) == round(100 - a['soh_percent'], 1)
+    assert float(fields['62']['value']) == a['soh_percent']
+    assert a['simulation_version']
+    assert a['battery_manufacture_year'] <= a['manufacture_year'] or a['battery_origin'] == 'replacement'
     assert a['location_simulated']
     with database.connect() as c:
         assert c.execute(select(func.count()).select_from(s.battery_asset)).scalar_one() == 0
     assert client.get('/api/v3/vehicles/' + unit['id'] + '/battery-dossier').json() == before
 
 
+def test_simulation_has_a_rare_low_health_tail_without_changing_model_specifications():
+    model = {'manufacturer': 'Exemplo', 'model': 'Elétrico', 'powertrain_type': 'BEV',
+             'vehicle_category': 'car', 'manufacture_year': 2015}
+    seeds = [_simulated_seed({'id': f'demo-{i}', 'manufacture_year': 2015}, model)
+             for i in range(10000)]
+    low = [seed for seed in seeds if seed['soh'] < 50]
+    assert 0 < len(low) < 100
+    assert all(seed['health_scenario'] == 'exceptional' for seed in low)
+    assert len({seed['capacity'] for seed in seeds}) == 1
+    assert len({seed['chemistry'] for seed in seeds}) == 1
+    assert all(0 < seed['soh'] <= 100 for seed in seeds)
+    assert all(seed['battery_year'] >= seed['vehicle']['manufacture_year'] for seed in seeds)
+
+
 def test_health_status_uses_limit_and_data_freshness():
     assert status(79, 80)['status'] == 'priority'
+    assert status(40, 40)['status'] == 'priority'
+    assert status(39, 40)['status'] == 'priority'
+    assert status(41, 40)['status'] == 'near'
+    assert status(46, 40)['status'] == 'monitor'
+    assert status(40, 40)['distance_pct'] == 0
+    assert status(39, 40)['distance_pct'] == -1
     assert status(83, 80)['status'] == 'near'
     assert status(90, 80)['status'] == 'monitor'
     assert status(None, 80)['status'] == 'insufficient'
@@ -46,6 +72,18 @@ def test_mode_switch_is_reversible_for_multiple_months(client, database):
     assert detail['passport']['counts']['total']==71
     assert client.put('/api/v3/admin/opportunities/settings',json={'mode':'real'},headers=headers).status_code==200
     assert client.get('/api/v3/opportunities?reference=2026-01').json()==before
+
+
+def test_opportunity_health_limit_accepts_40_and_rejects_out_of_range(client):
+    headers = account(client)
+    response = client.put('/api/v3/admin/opportunities/settings', json={'soh_limit': 40}, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()['soh_limit'] == 40
+    assert client.get('/api/v3/opportunities').json()['soh_limit'] == 40
+    assert client.get('/api/v3/opportunities/overview').json()['soh_limit'] == 40
+    for invalid in (-0.1, 100.1):
+        assert client.put('/api/v3/admin/opportunities/settings', json={'soh_limit': invalid}, headers=headers).status_code == 422
+    assert client.get('/api/v3/opportunities/settings').json()['soh_limit'] == 40
 
 
 def test_partner_import_preview_and_idempotency(client, database, monkeypatch):

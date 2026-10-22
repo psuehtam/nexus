@@ -6,7 +6,84 @@ for traction batteries; trailer and motorcycle model codes remain excluded.
 """
 from src.matching import normalize
 
-VERSION = 'explicit-name-1'
+VERSION = 'explicit-name-4'
+
+# Category assertions are deliberately narrow. The monthly marca/modelo file
+# has no vehicle-type column; these families have independent maker evidence.
+HEAVY_MODELS = {
+    ('FOTON', 'IBLUE EV 6T'): ('truck', 'https://fotondobrasil.com.br/wp-content/uploads/2024/06/Foton-iBlue-6T.pdf'),
+    ('MPOLO', 'TORINO ELETRICO U'): ('bus', 'https://onibus.marcopolo.com.br/produtos/urbanos'),
+    ('SANY', 'SYZ422 BEV'): ('truck', 'https://sanysouthafrica.com/sany-product-family-2022.pdf'),
+}
+
+PASSENGER_MAKERS = frozenset({'AUDI', 'BAIC', 'BMW', 'BYD', 'CAOACHANGAN',
+    'CAOACHERY', 'CHERY', 'CHEV', 'CHEVROLET', 'DENZA', 'DONGFENG', 'FANGCHENG',
+    'FIAT', 'FORD', 'GEELY', 'GMC', 'GWM', 'HONDA', 'HYD', 'HYUNDAI', 'INFINITI',
+    'JAC', 'JAECOO', 'JAG', 'JEEP', 'JETOUR', 'KIA', 'LEXUS', 'LR', 'MASERATI',
+    'M', 'MERCEDES', 'MG', 'MINI', 'MMC', 'NISSAN', 'OMODA', 'PEUGEOT',
+    'PORSCHE', 'RENAULT', 'REVA', 'SAIC', 'SOUEAST', 'SUBARU', 'TESLA',
+    'TOYOTA', 'VOLVO', 'VW', 'YANGWANG'})
+PICKUP_MODELS = frozenset({('BYD', 'SHARK'), ('CHEV', 'SILVERADO EV RST'),
+    ('FORD', 'F150 4X4 HYBRID'), ('GMC', 'SIERRA EV D MAX'),
+    ('TOYOTA', 'TUNDRA HYBRID')})
+VAN_MODELS = frozenset({('NISSAN', 'TOWNSTAR EV'), ('PEUGEOT', 'PARTNER RAPID EV')})
+
+# The same short suffix occurs on combustion motorcycles and trailers. An
+# explicit exclusion prevents these known non-candidates returning to review.
+EXCLUDED_NAMES = frozenset({
+    'GUZZI CALIFORNIA EV', 'MGUZZI BR CALIFORNIA EV',
+    'BRAMONT EVADER EV 1000',
+    'IVECO ETECH 440E42TZP', 'IVECO ETECH 740E42 TZ',
+    'IVECO ETECH MP440E42TP', 'IVECO ETECH RODOCAR',
+    'VW 17 190 PLG E TECH',
+    'R DM REBOQUES BAU 1E', 'R DM REBOQUES FECHADA 1E',
+    'R DM WORKSHOP RAILLY 2E', 'R ENGATESPARANA DM 3500',
+    'R F PROPRIA DM',
+})
+
+# Government fuel tables contain both electrified and combustion records under
+# this exact model code. The marca/modelo monthly file cannot separate them.
+FUEL_AMBIGUOUS_NAMES = frozenset({'BUSSCAR URBPLUSS HIBRIDO'})
+
+
+def category_for(name):
+    tokens = normalize(name).split()
+    if not tokens:
+        return 'unknown', None
+    maker, model = tokens[0], ' '.join(tokens[1:])
+    if maker == 'VOLVO' and model.startswith('FM ELECTRIC '):
+        return 'tractor_truck' if model.endswith('T') else 'truck', 'https://www.volvotrucks.com/en-en/trucks/electric/volvo-fm-electric.html'
+    if (maker, model) in HEAVY_MODELS:
+        return HEAVY_MODELS[(maker, model)]
+    if maker == 'YAMAHA':
+        return 'motorcycle', None
+    if maker == 'SOUSA':
+        return 'motorcycle', None
+    if (maker, model) in PICKUP_MODELS or (maker == 'BYD' and model.startswith('SHARK ')) or (maker == 'GMC' and model.startswith('HUMMER EV ')):
+        return 'utility', None
+    if (maker, model) in VAN_MODELS or (maker == 'KIA' and model.startswith('CARNIVAL ')) or (maker == 'DENZA' and model.startswith('D9 ')) or (maker == 'VW' and model.startswith('ID BUZZ')):
+        return 'van', None
+    if maker in PASSENGER_MAKERS:
+        return 'car', None
+    return 'unknown', None
+
+
+def pending_reason(name):
+    normalized = normalize(name)
+    if normalized in FUEL_AMBIGUOUS_NAMES:
+        return ('O mesmo código aparece com combustíveis diferentes em tabelas oficiais; o arquivo mensal não distingue as unidades.',
+                'SENATRAN — marca/modelo; SEFAZ/ES — tabela de ônibus por combustível')
+    if normalized.startswith('BORAM '):
+        return ('Há registros públicos deste código com combustíveis diferentes. O nome sozinho não identifica quais unidades são elétricas.',
+                'SENATRAN — marca/modelo; tabela IPVA estadual com códigos de combustível divergentes')
+    if normalized.startswith('JIANGSU DM '):
+        return ('O mesmo código aparece como elétrico e a gasolina em tabela pública; o arquivo mensal não distingue as unidades.',
+                'SENATRAN — marca/modelo; SEFAZ/SC — tabela IPVA por combustível')
+    if normalized == 'LMABORGHINI HURACAN EV':
+        return ('Nome não corresponde a um modelo elétrico confirmado por fonte do fabricante.',
+                'SENATRAN — marca/modelo; fabricante e motorização não confirmados')
+    return ('Nome sem indicação suficiente para classificação automática; excluído dos totais.',
+            'SENATRAN — marca/modelo; nenhuma ação manual necessária')
 
 MAKERS = {
     'AUDI': 'Audi', 'BAIC': 'BAIC', 'BMW': 'BMW', 'BUSSCAR': 'Busscar',
@@ -35,7 +112,10 @@ EV_MAKERS = frozenset({'BAIC', 'BMW', 'BYD', 'CAOACHANGAN', 'CHEV', 'CHEVROLET',
 DM_MAKERS = frozenset({'BYD', 'CAOACHERY', 'CHERY', 'DENZA', 'FANGCHENG',
     'JETOUR', 'SOUEAST', 'YANGWANG'})
 
-MODEL_ONLY = {'CIVIC HYBRID': ('Honda', 'Civic Hybrid', 'HEV')}
+MODEL_ONLY = {
+    'CIVIC HYBRID': ('Honda', 'Civic Hybrid', 'HEV'),
+    'RENAULT KOLEOS E TECH': ('Renault', 'Koleos E-Tech', 'HEV'),
+}
 
 
 def explicit_powertrain(name):
@@ -71,6 +151,13 @@ def explicit_powertrain(name):
 
 def classify(name):
     normalized = normalize(name)
+    if normalized in FUEL_AMBIGUOUS_NAMES:
+        return None
+    if normalized in EXCLUDED_NAMES:
+        return {'status': 'excluded', 'manufacturer': None, 'model': None,
+                'powertrain': None, 'category': None, 'vehicle_subtype': None,
+                'segment': None, 'body_type': None,
+                'evidence': 'Código de modelo não comprova bateria de tração; regra ' + VERSION}
     if normalized in MODEL_ONLY:
         maker, model, propulsion = MODEL_ONLY[normalized]
     else:
@@ -84,7 +171,9 @@ def classify(name):
             model = ' '.join(parts[2:])
         if not model:
             return None
+    category, category_source = category_for(maker + ' ' + model if normalized in MODEL_ONLY else normalized)
     return {'manufacturer': maker, 'model': model, 'powertrain': propulsion,
-            'category': 'unknown', 'vehicle_subtype': None, 'segment': None,
+            'category': category, 'vehicle_subtype': None, 'segment': None,
             'body_type': None, 'status': 'recognized',
-            'evidence': 'SENATRAN: marca/modelo/versão com indicação explícita de propulsão; regra ' + VERSION}
+            'evidence': 'SENATRAN: marca/modelo/versão com indicação explícita de propulsão; regra ' + VERSION +
+                        (('; tipo: ' + category_source) if category_source else '')}

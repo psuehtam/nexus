@@ -522,7 +522,10 @@ def parse_artifact(artifact_id, lease):
     with db.engine.connect() as c:
         for item in c.execute(select(p.filtered_summary.c.raw_name,p.filtered_summary.c.status,func.sum(p.filtered_summary.c.quantity),func.sum(p.filtered_summary.c.row_count)).where(p.filtered_summary.c.artifact_id==artifact_id).group_by(p.filtered_summary.c.raw_name,p.filtered_summary.c.status).order_by(p.filtered_summary.c.raw_name,p.filtered_summary.c.status)):
             hasher.update(canonical([item[0],item[1],int(item[2]),int(item[3])]).encode('utf-8'))
-    semantic_hash = hasher.hexdigest()
+    # Filtering happens before content is stored. Equal retained rows under
+    # different classifier rules are not interchangeable: their category and
+    # excluded-name decisions can differ even when row bytes do not.
+    semantic_hash = digest([hasher.hexdigest(), artifact['parser_version']])
     content_id = stable(canonical([PROVIDER, DATASET, artifact['reference'], NORMALIZATION_VERSION, semantic_hash]))
     with job_transaction(lease, 'parsed') as c:
         if count != ordinal:
@@ -589,8 +592,8 @@ def rules_snapshot(c):
     overrides = [dict(r) for r in c.execute(select(p.rule).join(latest, and_(
         p.rule.c.raw_name == latest.c.raw_name, p.rule.c.version == latest.c.version)).order_by(p.rule.c.raw_name)).mappings()]
     # Built-in rules remain frozen in the classification record across releases.
-    # Category is intentionally unknown without a category-specific assertion.
-    return {'prefixes': list(catalog.PREFIXES), 'overrides': overrides, 'category_policy': 'explicit-or-unknown-1',
+    # Model-family assertions supply vehicle type when the source omits it.
+    return {'prefixes': list(catalog.PREFIXES), 'overrides': overrides, 'category_policy': 'model-family-2',
             'automatic_classifier': auto_classification.VERSION}
 
 
@@ -662,9 +665,11 @@ def _classify(name, frozen):
     for prefix, brand, model, propulsion in frozen['prefixes']:
         if name == prefix or name.startswith(prefix + ' '):
             known_bus=prefix in {'M BENZ EO500U','MERCEDES BENZ EO500U'}
-            return {'manufacturer': brand, 'model': model, 'powertrain': propulsion, 'category': 'bus' if known_bus else 'unknown',
+            inferred_category, category_source = auto_classification.category_for(name)
+            return {'manufacturer': brand, 'model': model, 'powertrain': propulsion,
+                    'category': 'bus' if known_bus else inferred_category,
                     'vehicle_subtype':None,'segment':None,'body_type':None,
-                    'evidence': 'https://www.mercedes-benz-trucks.com.br/onibus/eletrico/tecnologia/bateria' if known_bus else 'Catálogo revisado local; categoria não inferida pelo nome', 'status': 'recognized'}
+                    'evidence': 'https://www.mercedes-benz-trucks.com.br/onibus/eletrico/tecnologia/bateria' if known_bus else (category_source or 'Catálogo revisado local; categoria inferida por família do modelo'), 'status': 'recognized'}
     return {'status': 'pending', 'manufacturer': None, 'model': None, 'powertrain': None,
             'category': None,'vehicle_subtype':None,'segment':None,'body_type':None,'evidence': None}
 
@@ -812,8 +817,8 @@ def pending_reviews(classification_id=None, limit=50, after='', offset=0, paged=
         total=c.execute(select(func.count()).select_from(query.subquery())).scalar()
         rows=c.execute(query.order_by(func.max(t.c.electrified_hint).desc(),t.c.raw_name).limit(min(200,max(1,limit))).offset(offset)).mappings()
         items=[dict(row,classification_id=classification_id,
-            reason='Nome sem indicação suficiente para classificação automática; excluído dos totais.',
-            source='SENATRAN — marca/modelo; nenhuma ação manual necessária') for row in rows]
+            reason=auto_classification.pending_reason(row['raw_name'])[0],
+            source=auto_classification.pending_reason(row['raw_name'])[1]) for row in rows]
         return {'items':items,'total':total,'offset':offset,'limit':limit} if paged else items
 
 

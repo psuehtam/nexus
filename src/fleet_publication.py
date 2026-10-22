@@ -1,7 +1,7 @@
 """Monthly statistics and permanent vehicle records; transactional generation."""
 import hashlib
 import re
-from sqlalchemy import select, insert, update, func, and_
+from sqlalchemy import select, insert, update, func, and_, or_
 from src import db, intelligence_schema as s, operational_schema as o
 from src import intelligence
 from src.vehicle_taxonomy import is_electrified,is_heavy
@@ -33,8 +33,15 @@ def canonical(c, row):
     candidates=c.execute(select(o.model).where(~o.model.c.model_key.like('legacy:%'),func.upper(o.model.c.manufacturer)==_clean(row.get('manufacturer')),func.upper(o.model.c.model)==_clean(row.get('model')),o.model.c.powertrain_type==row.get('powertrain_type'))).mappings().all()
     if len(candidates)==1:
         current=candidates[0]
-        values={'is_electric':is_electrified(row.get('powertrain_type')),'is_heavy_vehicle':is_heavy(row.get('vehicle_category'))}
-        if current.get('classification_status')!='approved':values['vehicle_category']=row.get('vehicle_category') or current['vehicle_category']
+        # A previous automatic publication may have known the motorization but
+        # not the vehicle type. Keep an explicit human classification, while
+        # allowing later model evidence to correct system-created categories.
+        category=(current['vehicle_category'] if current.get('classification_source') else
+                  row.get('vehicle_category') or current['vehicle_category'])
+        values={'is_electric':is_electrified(row.get('powertrain_type')),
+                'is_heavy_vehicle':is_heavy(category)}
+        if not current.get('classification_source'):
+            values['vehicle_category']=category
         c.execute(update(o.model).where(o.model.c.id==current['id']).values(**values))
         return dict(c.execute(select(o.model).where(o.model.c.id==current['id'])).mappings().one())
     mid = intelligence.stable('registry-model:' + key)
@@ -179,6 +186,23 @@ def process(publication_id,batch_size=1000,lease=None):
             # expose newly prepared units.
             if eligible:
                 c.execute(update(o.registry).where(o.registry.c.vehicle_id.in_(select(s.fleet_unit_membership.c.vehicle_id).where(s.fleet_unit_membership.c.publication_id==publication_id))).values(visible=True))
+                if previous:
+                    current_models=select(o.group_model.c.model_id).join(s.fleet_model_group,
+                        o.group_model.c.group_id==s.fleet_model_group.c.id).where(
+                        s.fleet_model_group.c.publication_id==publication_id)
+                    retired_models=select(o.group_model.c.model_id).join(s.fleet_model_group,
+                        o.group_model.c.group_id==s.fleet_model_group.c.id).where(
+                        s.fleet_model_group.c.publication_id==previous['id'],
+                        ~o.group_model.c.model_id.in_(current_models))
+                    identified_ids=select(s.vehicle_asset.c.id).where(or_(
+                        s.vehicle_asset.c.identity_status.in_(['informed','verified','identified']),
+                        s.vehicle_asset.c.vin.is_not(None),s.vehicle_asset.c.renavam.is_not(None),
+                        s.vehicle_asset.c.plate.is_not(None)))
+                    installed_ids=select(o.current_install.c.vehicle_id)
+                    c.execute(update(o.registry).where(o.registry.c.origin=='statistical_placeholder',
+                        o.registry.c.visible.is_(True),o.registry.c.current_model_id.in_(retired_models),
+                        ~o.registry.c.vehicle_id.in_(identified_ids),
+                        ~o.registry.c.vehicle_id.in_(installed_ids)).values(visible=False))
             if eligible:
                 insert_once(c,s.fleet_active,dict(id=ACTIVE_ID,publication_id=publication_id,updated_at=now()),['id'])
                 c.execute(update(s.fleet_active).where(s.fleet_active.c.id==ACTIVE_ID).values(publication_id=publication_id,updated_at=now()))
@@ -196,6 +220,24 @@ def materialize(source_snapshot_id=None,batch_size=1000,complete=True,lease=None
 
 def active_publication(c):
     return c.execute(select(s.fleet_publication).join(s.fleet_active,s.fleet_active.c.publication_id==s.fleet_publication.c.id).where(s.fleet_active.c.id==ACTIVE_ID)).mappings().first()
+
+
+def backfill_unknown_automatic_types():
+    """Resolve legacy model types without changing reviewed classifications."""
+    from src.auto_classification import category_for
+    with db.engine.begin() as c:
+        rows=c.execute(select(o.model.c.id,o.model.c.manufacturer,o.model.c.model).where(
+            o.model.c.vehicle_category=='unknown',o.model.c.classification_source.is_(None))).mappings().all()
+        for row in rows:
+            category,_=category_for(row['manufacturer']+' '+row['model'])
+            if category=='unknown':continue
+            c.execute(update(o.model).where(o.model.c.id==row['id']).values(
+                vehicle_category=category,is_heavy_vehicle=is_heavy(category)))
+            vehicle_ids=select(o.registry.c.vehicle_id).where(o.registry.c.current_model_id==row['id'])
+            c.execute(update(s.vehicle_asset).where(s.vehicle_asset.c.id.in_(vehicle_ids),
+                or_(s.vehicle_asset.c.vehicle_category.is_(None),
+                    s.vehicle_asset.c.vehicle_category.in_(['unknown','light','heavy','LMT']))).values(
+                vehicle_category=category))
 
 def migrate_legacy_registry():
     """Explicit, resumable migration, preserving asset UUIDs and old public codes."""

@@ -23,7 +23,7 @@ def opportunity_settings():
 
 class OpportunitySettings(BaseModel):
     mode:str|None=None
-    soh_limit:float|None=Field(None,ge=50,le=100)
+    soh_limit:float|None=Field(None,ge=0,le=100)
 
 @router.put('/admin/opportunities/settings')
 def set_opportunity_settings(body:OpportunitySettings,user=Depends(require_admin)):

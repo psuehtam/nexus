@@ -15,6 +15,8 @@ _wake = threading.Event()
 def start(check_catalog=True):
     global _enabled
     pipeline.initialize()
+    from src.fleet_publication import backfill_unknown_automatic_types
+    backfill_unknown_automatic_types()
     from src.senatran_months import retire_catalog_retries, request_refresh
     retire_catalog_retries()
     _stop.clear()
