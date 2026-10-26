@@ -1,0 +1,12 @@
+{
+  "reviewed_at": "2026-09-14",
+  "source_url": "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html",
+  "year": 2022,
+  "notes": "População residente por UF, Censo 2022. Usada para eletrificados por 100 mil habitantes. Não é frota.",
+  "ufs": {
+    "RO": 1581196, "AC": 830018, "AM": 3941613, "RR": 636707, "PA": 8120131, "AP": 733759, "TO": 1512459,
+    "MA": 6775805, "PI": 3271199, "CE": 8794957, "RN": 3302729, "PB": 3974687, "PE": 9058155, "AL": 3127683,
+    "SE": 2209558, "BA": 14141626, "MG": 20539989, "ES": 3833712, "RJ": 16055174, "SP": 44411238,
+    "PR": 11444380, "SC": 7610361, "RS": 10882965, "MS": 2757013, "MT": 3658649, "GO": 7056495, "DF": 2817381
+  }
+}

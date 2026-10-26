@@ -1,0 +1,29 @@
+{
+  "source": "https://servicodados.ibge.gov.br/api/v1/localidades/municipios?view=nivelado",
+  "reviewed_at": "2026-09-09",
+  "note": "Aliases explícitos, revisados por UF e código IBGE. Não há aprovação automática por similaridade. Grafia original permanece no arquivo bruto.",
+  "aliases": [
+    ["GO", "BOM JESUS", "5203500"],
+    ["MT", "SANTO ANTONIO DO LEVERGER", "5107800"],
+    ["MG", "QUELUZITA", "3153806"],
+    ["PA", "SANTA ISABEL DO PARA", "1506500"],
+    ["PR", "PINHAL DO SAO BENTO", "4119251"],
+    ["PR", "SANTA CRUZ DO MONTE CASTELO", "4123303"],
+    ["PE", "BELEM DE SAO FRANCISCO", "2601607"],
+    ["PE", "LAGOA DO ITAENGA", "2608503"],
+    ["RJ", "PARATI", "3303807"],
+    ["RN", "ARES", "2401206"],
+    ["RN", "BOA SAUDE", "2405306"],
+    ["RN", "LAGOA DANTA", "2406205"],
+    ["RS", "SANTANA DO LIVRAMENTO", "4317103"],
+    ["SC", "BALNEARIO DE PICARRAS", "4212809"],
+    ["SC", "SAO LOURENCO D OESTE", "4216909"],
+    ["SC", "SAO MIGUEL D OESTE", "4217204"],
+    ["TO", "COUTO DE MAGALHAES", "1706001"]
+  ],
+  "historical_sources": [
+    "https://portal.al.go.leg.br/noticias/163470/municipio-de-bom-jesus-passa-a-se-chamar-bom-jesus-de-goias",
+    "https://www.ibge.gov.br/biblioteca/visualizacao/dtb/minasgerais/queluzito.pdf",
+    "https://www.ibge.gov.br/biblioteca/visualizacao/livros/liv13610.pdf"
+  ]
+}

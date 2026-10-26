@@ -1,0 +1,11 @@
+{
+  "reference": "2026-H1",
+  "reviewed_at": "2026-09-14",
+  "provider": "Fenabrave",
+  "source_url": "https://www.fenabrave.org.br/",
+  "notes": "Emplacamentos do primeiro semestre de 2026, agregados. Não equivalem à variação de estoque SENATRAN e não detalham modelo.",
+  "items": [
+    {"propulsion": "BEV", "quantity": 90470, "brand": null, "model": null},
+    {"propulsion": "HEV", "quantity": 154472, "brand": null, "model": null}
+  ]
+}

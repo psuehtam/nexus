@@ -1,0 +1,11 @@
+fastapi==0.141.1
+uvicorn==0.52.4
+SQLAlchemy==2.0.52
+psycopg[binary]==3.3.5
+numpy==2.3.5
+pandas==3.0.5
+httpx==0.28.1
+openpyxl==3.1.5
+beautifulsoup4==4.15.0
+pypdf==6.19.0
+alembic>=1.14,<2

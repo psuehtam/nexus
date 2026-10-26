@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup diário do NEXUS
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=nexus-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,18 @@
+{
+  "reviewed_at": "2026-09-14",
+  "source_url": "https://www.gov.br/inmetro/pt-br/assuntos/regulamentacao/avaliacao-da-conformidade/programa-brasileiro-de-etiquetagem/tabelas-de-eficiencia-energetica/veiculos-automotivos-pbe-veicular",
+  "notes": "Semente revisada do PBE Veicular para eletrificados. A ingestão de planilha oficial complementar usa o conector INMETRO.",
+  "vehicles": [
+    {"manufacturer": "BYD", "model": "Dolphin", "trim": "GS", "powertrain": "BEV", "model_year_start": 2026, "model_year_end": 2026, "nominal_capacity_kwh": 44.9},
+    {"manufacturer": "GWM", "model": "Ora 03", "trim": null, "powertrain": "BEV", "model_year_start": 2023, "model_year_end": 2026, "nominal_capacity_kwh": 48.0},
+    {"manufacturer": "Renault", "model": "Kwid E-Tech", "trim": null, "powertrain": "BEV", "model_year_start": 2022, "model_year_end": 2026, "nominal_capacity_kwh": 26.8},
+    {"manufacturer": "Nissan", "model": "Leaf", "trim": "40 kWh", "powertrain": "BEV", "model_year_start": 2019, "model_year_end": 2026, "nominal_capacity_kwh": 40.0},
+    {"manufacturer": "Volvo", "model": "EX30", "trim": "Single Motor", "powertrain": "BEV", "model_year_start": 2024, "model_year_end": 2026, "nominal_capacity_kwh": 51.0},
+    {"manufacturer": "Fiat", "model": "500e", "trim": null, "powertrain": "BEV", "model_year_start": 2022, "model_year_end": 2026, "nominal_capacity_kwh": 42.0},
+    {"manufacturer": "BYD", "model": "Song Plus", "trim": "DM-i", "powertrain": "PHEV", "model_year_start": 2023, "model_year_end": 2026, "nominal_capacity_kwh": 18.3},
+    {"manufacturer": "GWM", "model": "Haval H6", "trim": "PHEV34", "powertrain": "PHEV", "model_year_start": 2025, "model_year_end": 2025, "nominal_capacity_kwh": 34.0},
+    {"manufacturer": "Toyota", "model": "Corolla Hybrid", "trim": null, "powertrain": "HEV", "model_year_start": 2020, "model_year_end": 2026, "nominal_capacity_kwh": 1.3},
+    {"manufacturer": "Toyota", "model": "Corolla Cross Hybrid", "trim": null, "powertrain": "HEV", "model_year_start": 2021, "model_year_end": 2026, "nominal_capacity_kwh": 1.4},
+    {"manufacturer": "Honda", "model": "City Hybrid", "trim": "e:HEV", "powertrain": "HEV", "model_year_start": 2023, "model_year_end": 2026, "nominal_capacity_kwh": 0.9}
+  ]
+}
