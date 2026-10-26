@@ -1,0 +1,29 @@
+{
+  "source": {
+    "provider": "SUBSTITUIR pela fonte autorizada",
+    "dataset_name": "SUBSTITUIR pelo nome do conjunto",
+    "reference_period": "2026-08",
+    "method": "import",
+    "source_url": "https://example.org/substituir-pela-fonte-original",
+    "license_or_terms": "SUBSTITUIR pelos termos de uso",
+    "scope": "SUBSTITUIR pela cobertura e metodologia; não misturar totais e subtotais",
+    "metric": "registrations",
+    "notes": "MODELO DE PREENCHIMENTO. Substitua todos os campos e quantidades com dados documentados.",
+    "access_level": "public"
+  },
+  "observations": [
+    {
+      "source_record_reference": "SUBSTITUIR pelo identificador da linha na origem",
+      "country": "BR",
+      "state": null,
+      "municipality": null,
+      "vehicle_category": "unknown",
+      "manufacturer": null,
+      "model": null,
+      "model_year": null,
+      "powertrain_type": "UNKNOWN",
+      "fuel_type": null,
+      "quantity": 0
+    }
+  ]
+}

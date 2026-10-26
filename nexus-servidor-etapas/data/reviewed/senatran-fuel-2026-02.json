@@ -1,0 +1,19 @@
+{
+  "reference": "2026-02",
+  "reviewed_at": "2026-09-14",
+  "source_url": "https://www.gov.br/transportes/pt-br/assuntos/transito/conteudo-Senatran/frota-de-veiculos-2026",
+  "dataset": "SENATRAN — Quantidade de Veículos por UF Município e Combustível",
+  "notes": "Régua oficial de cobertura (fev/2026). Sem marca/modelo. Não substituir pelo acumulado ABVE. Atualizar com scripts/ingest_fuel_baseline.py quando a SENATRAN publicar planilha nova.",
+  "national": [
+    {"fuel_type": "ELETRICO/FONTE EXTERNA", "propulsion": "BEV", "quantity": 249310},
+    {"fuel_type": "ELETRICO", "propulsion": "BEV", "quantity": 13245},
+    {"fuel_type": "ELETRICO/FONTE INTERNA", "propulsion": "HEV", "quantity": 43140},
+    {"fuel_type": "HIBRIDO", "propulsion": "HEV", "quantity": 32455},
+    {"fuel_type": "GASOLINA/ELETRICO", "propulsion": "HEV", "quantity": 281035},
+    {"fuel_type": "GASOLINA/ALCOOL/ELETRICO", "propulsion": "HEV_FLEX", "quantity": 197817},
+    {"fuel_type": "HIBRIDO PLUG-IN", "propulsion": "PHEV", "quantity": 58537},
+    {"fuel_type": "DIESEL/ELETRICO", "propulsion": "HEV", "quantity": 12264},
+    {"fuel_type": "ETANOL/ELETRICO", "propulsion": "HEV", "quantity": 3},
+    {"fuel_type": "CELULA COMBUSTIVEL", "propulsion": "FCEV", "quantity": 12}
+  ]
+}

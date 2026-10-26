@@ -1,0 +1,21 @@
+{
+  "period": "2026-H1",
+  "reviewed_at": "2026-09-14",
+  "source_url": "https://abve.org.br/onibus-eletricos-tem-crescimento-de-925-no-1o-semestre-de-2026-comparado-a-2025/",
+  "markers": ["589", "429", "90"],
+  "total": 589,
+  "cities": [
+    ["SP", "São Paulo", 429],
+    ["DF", "Brasília", 90],
+    ["SP", "São Bernardo do Campo", 19],
+    ["SE", "Aracaju", 15],
+    ["GO", "Goiânia", 15],
+    ["SP", "Osasco", 12],
+    ["MG", "Confins", 2],
+    ["SP", "Itapevi", 2],
+    ["RJ", "Rio de Janeiro", 2],
+    ["PR", "Curitiba", 1],
+    ["SP", "Nova Europa", 1],
+    ["SP", "Santos", 1]
+  ]
+}

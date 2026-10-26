@@ -1,0 +1,9 @@
+[Unit]
+Description=Backup local do NEXUS
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/nexus
+ExecStart=/usr/bin/bash /opt/nexus/linux/backup.sh --destination /var/backups/nexus

@@ -1,0 +1,15 @@
+{
+  "period": "2026-08",
+  "reviewed_at": "2026-09-14",
+  "source_url": "https://abve.org.br/com-57-mil-emplacamentos-em-agosto-eletrificados-abrem-a-corrida-para-o-milhao-em-setembro/",
+  "markers": ["950.183", "57.386", "27.166", "20.535", "4.445", "5.240"],
+  "cumulative_electrified": 950183,
+  "registrations": [
+    {"powertrain_type": "BEV", "quantity": 27166},
+    {"powertrain_type": "PHEV", "quantity": 20535},
+    {"powertrain_type": "HEV", "quantity": 4445},
+    {"powertrain_type": "HEV_FLEX", "quantity": 5240},
+    {"powertrain_type": "MHEV_48V", "quantity": 4017},
+    {"powertrain_type": "MHEV_12V", "quantity": 2652}
+  ]
+}
