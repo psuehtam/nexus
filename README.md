@@ -2,6 +2,12 @@
 
 O NEXUS organiza os dados mensais da SENATRAN no fluxo **Veículos → modelo → cadastro individual → ficha da bateria**. Relatórios e Administração usam a mesma estrutura visual.
 
+## Instalação no servidor Linux
+
+Para o servidor Linux Mint 22.3 da empresa, consulte [LEIA-PRIMEIRO.md](LEIA-PRIMEIRO.md). Os arquivos `01-VERIFICAR-SERVIDOR.sh` a `10-CONFIGURAR-ADMIN.sh` conduzem a verificação, instalação, acesso por ZeroTier, teste de inicialização, backup e operação. O instalador usa a porta 8001 e preserva o Portainer na porta 8000. Docker Engine e Compose precisam estar funcionando antes da instalação.
+
+As configurações e credenciais ficam no `.env` local, que não entra no Git. A pasta `linux/` contém os scripts individuais de instalação, configuração, atualização, diagnóstico, restauração e remoção. Para atualizar uma instalação existente, execute `git pull --ff-only` e depois `sudo bash linux/update.sh --backup-dir /var/backups/nexus --confirm` na raiz do projeto.
+
 ## Instalação recomendada no Windows
 
 1. Baixe e extraia o projeto (ou clone o repositório).

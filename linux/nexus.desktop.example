@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NEXUS
+Comment=Abrir NEXUS no navegador
+Exec=xdg-open http://10.48.155.129:8001/veiculos
+Icon=applications-internet
+Terminal=false
+Categories=Office;

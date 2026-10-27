@@ -5,6 +5,13 @@ export class ApiError extends Error {
 }
 let csrfToken = '';
 export function setCsrfToken(token: string) { csrfToken = token; }
+export function randomId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set('Content-Type', 'application/json');
@@ -20,7 +27,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 const pendingWrites = new Map<string, string>();
 export async function write<T>(path: string, body: unknown, method = 'POST') {
   const encoded = JSON.stringify(body); const logical = method + path + encoded;
-  const key = pendingWrites.get(logical) || crypto.randomUUID(); pendingWrites.set(logical, key);
+  const key = pendingWrites.get(logical) || randomId(); pendingWrites.set(logical, key);
   try {
     const result = await api<T>(path, { method, body: encoded, headers: { 'Idempotency-Key': key } });
     pendingWrites.delete(logical); return result;

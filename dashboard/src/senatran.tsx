@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import { useResource, write } from './api';
+import { randomId, useResource, write } from './api';
 import { Alert, Badge, date, Loading, month, Note, number } from './ui';
 
 interface Job { id: string; status: string; stage: string; error?: string; progress?: { downloaded_bytes?: number; download_bytes?: number; scanned_rows?: number; materialized_units?: number; planned_units?: number }; }
@@ -38,7 +38,7 @@ export function SenatranPanel() {
       return <article className="history-row" key={m.reference}><div><h3>{month(m.reference)}</h3>{datasets.map(d => <Progress key={d.kind} dataset={d} />)}{m.datasets[0].publication_url && <a className="text-link" href={m.datasets[0].publication_url} target="_blank" rel="noreferrer">Ver publicação no site da Senatran</a>}{!m.datasets[0].available && <small>Marca e modelo pendente na fonte. Os demais relatórios podem ser importados e consultados em Relatórios.</small>}{m.installed && <small>Publicação disponível para consulta nos relatórios.</small>}</div><div className="actions">
         {datasets.some(d => d.job?.status === 'complete') && <Link className="button secondary" to={`/relatorios?reference=${m.reference}`}>Ver dados de {month(m.reference)}</Link>}
         {datasets.filter(d => d.job && ['failed', 'paused'].includes(d.job.status)).map(d => <button key={d.kind} className="button secondary" disabled={busy} onClick={() => act(`/admin/jobs/${d.job!.id}/retry`, {})}>Retomar {d.name || (d.kind === 'import_remote' ? 'marca/modelo' : 'complemento')}</button>)}
-        <button className="button" disabled={busy || active || blocked} onClick={() => act('/admin/senatran/import', { reference: m.reference, refresh: m.installed, idempotency_key: crypto.randomUUID() })}>{active ? 'Em andamento' : blocked ? 'Arquivos indisponíveis' : m.installed ? m.datasets.some(d => d.revision_available) ? 'Atualizar mês' : 'Verificar revisão' : 'Baixar e importar mês'}</button>
+        <button className="button" disabled={busy || active || blocked} onClick={() => act('/admin/senatran/import', { reference: m.reference, refresh: m.installed, idempotency_key: randomId() })}>{active ? 'Em andamento' : blocked ? 'Arquivos indisponíveis' : m.installed ? m.datasets.some(d => d.revision_available) ? 'Atualizar mês' : 'Verificar revisão' : 'Baixar e importar mês'}</button>
       </div></article>;
     })}<Note>Fechar o navegador não interrompe o processamento. O computador e o Docker precisam continuar ligados.</Note>
   </section>;

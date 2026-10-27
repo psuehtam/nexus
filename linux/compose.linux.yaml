@@ -1,0 +1,7 @@
+services:
+  api:
+    ports:
+      - "${NEXUS_BIND_IP:?Defina NEXUS_BIND_IP em .env}:${NEXUS_HOST_PORT:-8001}:8000"
+    restart: unless-stopped
+  postgres:
+    restart: unless-stopped
